@@ -1,0 +1,92 @@
+{
+  "name": "Enterprise Java Portfolio",
+  "image": "mcr.microsoft.com/devcontainers/java:21-jdk-bookworm",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vscjava.vscode-spring-boot-dashboard",
+        "redhat.vscode-yaml",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "ms-azuretools.vscode-docker",
+        "humao.rest-client",
+        "github.vscode-github-actions",
+        "ms-vscode.vscode-json"
+      ],
+      "settings": {
+        "java.configuration.runtimes": [
+          {
+            "name": "JavaSE-21",
+            "path": "/usr/local/sdkman/candidates/java/current"
+          }
+        ],
+        "java.compile.nullAnalysis.mode": "automatic",
+        "java.format.settings.url": "https://raw.githubusercontent.com/google/styleguide/gh-pages/eclipse-java-google-style.xml",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": "explicit"
+        }
+      }
+    }
+  },
+
+  "forwardPorts": [
+    8080, 8081, 8082, 8083, 8084,  // Microservices
+    9092, 9093,                    // Kafka
+    5432,                          // PostgreSQL
+    6379,                          // Redis
+    8088,                          // Flink Web UI
+    4040,                          // Spark UI
+    3000,                          // React Frontend
+    9090,                          // Prometheus
+    3001                           // Grafana
+  ],
+
+  "portsAttributes": {
+    "8080": {
+      "label": "API Gateway"
+    },
+    "8081": {
+      "label": "User Service"
+    },
+    "8082": {
+      "label": "Order Service"
+    },
+    "8083": {
+      "label": "Inventory Service"
+    },
+    "8084": {
+      "label": "Notification Service"
+    },
+    "9092": {
+      "label": "Kafka"
+    },
+    "3000": {
+      "label": "Frontend"
+    },
+    "8088": {
+      "label": "Flink Dashboard"
+    },
+    "4040": {
+      "label": "Spark UI"
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  "remoteUser": "vscode",
+  
+  "containerEnv": {
+    "MAVEN_OPTS": "-Xmx2g",
+    "JAVA_TOOL_OPTIONS": "-XX:+UseZGC -XX:+UnlockExperimentalVMOptions"
+  }
+}
