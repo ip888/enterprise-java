@@ -25,8 +25,8 @@ brew install java-21-openjdk
 brew install maven
 
 # Clone and setup
-git clone <your-repo>
-cd enterprise-java-portfolio
+git clone https://github.com/ip888/enterprise-java.git
+cd enterprise-java
 docker-compose -f .devcontainer/docker-compose.yml up -d
 ```
 

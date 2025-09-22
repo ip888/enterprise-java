@@ -60,7 +60,7 @@ Real-time data processing with ML capabilities using Spark and Flink.
 
 ### **Recommended: GitHub Codespaces (Zero Local Setup)**
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/YOUR_USERNAME/enterprise-java-portfolio)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/ip888/enterprise-java)
 
 1. **Click the Codespaces badge above** (after pushing to GitHub)
 2. **Wait 5-10 minutes** for environment setup
@@ -293,4 +293,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ⭐ **Star this repository** if you find it useful for your own learning or portfolio development!
 
-**Ready to explore enterprise-grade Java architecture?** Start with [GitHub Codespaces](https://codespaces.new/YOUR_USERNAME/enterprise-java-portfolio) and begin developing immediately!
+**Ready to explore enterprise-grade Java architecture?** Start with [GitHub Codespaces](https://codespaces.new/ip888/enterprise-java) and begin developing immediately!

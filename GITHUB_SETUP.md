@@ -81,7 +81,7 @@ Once Codespaces starts, verify:
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/YOUR_USERNAME/enterprise-java-portfolio)
 
 # To use your actual username:
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/yourusername/enterprise-java-portfolio)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/yourusername/enterprise-java)
 ```
 
 ## 🎯 Expected Outcome
