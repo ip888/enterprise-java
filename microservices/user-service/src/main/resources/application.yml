@@ -1,0 +1,114 @@
+# User Service Configuration
+spring:
+  application:
+    name: user-service
+  
+  # R2DBC Database Configuration
+  r2dbc:
+    url: ${DB_URL:r2dbc:postgresql://localhost:5432/portfolio_db}
+    username: ${DB_USERNAME:portfolio_user}
+    password: ${DB_PASSWORD:portfolio_pass}
+    pool:
+      initial-size: 5
+      max-size: 20
+      max-idle-time: 30m
+      validation-query: SELECT 1
+  
+  # Liquibase Configuration (for database migrations)
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    url: ${LIQUIBASE_URL:jdbc:postgresql://localhost:5432/portfolio_db}
+    user: ${DB_USERNAME:portfolio_user}
+    password: ${DB_PASSWORD:portfolio_pass}
+  
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: user-service-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+  
+  # Jackson Configuration
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+  
+  # Security Configuration
+  security:
+    user:
+      name: admin
+      password: admin
+      roles: ADMIN
+
+# Server Configuration
+server:
+  port: 8081
+  error:
+    include-message: always
+    include-binding-errors: always
+
+# Management and Monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Application-specific Configuration
+app:
+  jwt:
+    secret: ${JWT_SECRET:change-this-secret-in-production-minimum-32-characters-required}
+    expiration: ${JWT_EXPIRATION:86400000} # 24 hours in milliseconds
+    issuer: user-service
+  
+  cors:
+    allowed-origins: "*"
+    allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+    allowed-headers: "*"
+    allow-credentials: true
+  
+  pagination:
+    default-size: 20
+    max-size: 100
+
+# Logging Configuration
+logging:
+  level:
+    com.enterprise.portfolio.userservice: DEBUG
+    org.springframework.r2dbc: DEBUG
+    org.springframework.kafka: INFO
+    io.r2dbc.postgresql: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/user-service.log
+
+# Actuator Info
+info:
+  app:
+    name: User Service
+    description: Event-driven User Management Service
+    version: 1.0.0
+    encoding: UTF-8
+    java:
+      version: 21

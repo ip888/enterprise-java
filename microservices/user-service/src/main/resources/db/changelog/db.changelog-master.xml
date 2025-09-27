@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="1" author="enterprise-portfolio">
+        <createTable tableName="users">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false" />
+            </column>
+            <column name="username" type="VARCHAR(50)">
+                <constraints nullable="false" unique="true" />
+            </column>
+            <column name="email" type="VARCHAR(255)">
+                <constraints nullable="false" unique="true" />
+            </column>
+            <column name="password_hash" type="VARCHAR(255)">
+                <constraints nullable="false" />
+            </column>
+            <column name="first_name" type="VARCHAR(100)">
+                <constraints nullable="false" />
+            </column>
+            <column name="last_name" type="VARCHAR(100)">
+                <constraints nullable="false" />
+            </column>
+            <column name="phone_number" type="VARCHAR(20)">
+                <constraints nullable="true" />
+            </column>
+            <column name="is_active" type="BOOLEAN" defaultValue="true">
+                <constraints nullable="false" />
+            </column>
+            <column name="email_verified" type="BOOLEAN" defaultValue="false">
+                <constraints nullable="false" />
+            </column>
+            <column name="roles" type="TEXT" defaultValue="[&quot;USER&quot;]">
+                <constraints nullable="false" />
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false" />
+            </column>
+            <column name="updated_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false" />
+            </column>
+            <column name="version" type="BIGINT" defaultValue="0">
+                <constraints nullable="false" />
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="2" author="enterprise-portfolio">
+        <createIndex indexName="idx_users_username" tableName="users">
+            <column name="username" />
+        </createIndex>
+        <createIndex indexName="idx_users_email" tableName="users">
+            <column name="email" />
+        </createIndex>
+        <createIndex indexName="idx_users_active" tableName="users">
+            <column name="is_active" />
+        </createIndex>
+        <createIndex indexName="idx_users_created_at" tableName="users">
+            <column name="created_at" />
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="3" author="enterprise-portfolio">
+        <sql> CREATE OR REPLACE FUNCTION update_updated_at_column() RETURNS TRIGGER AS $$ BEGIN
+            NEW.updated_at = CURRENT_TIMESTAMP; RETURN NEW; END; $$ LANGUAGE plpgsql; CREATE TRIGGER
+            update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION
+            update_updated_at_column(); </sql>
+    </changeSet>
+
+    <changeSet id="4" author="enterprise-portfolio">
+        <insert tableName="users">
+            <column name="username" value="admin" />
+            <column name="email" value="admin@enterprise-portfolio.com" />
+            <column name="password_hash"
+                value="$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewuByqhd9QFZpIGG" />
+            <column name="first_name" value="Admin" />
+            <column name="last_name" value="User" />
+            <column name="is_active" valueBoolean="true" />
+            <column name="email_verified" valueBoolean="true" />
+            <column name="roles" value="[&quot;ADMIN&quot;, &quot;USER&quot;]" />
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>
