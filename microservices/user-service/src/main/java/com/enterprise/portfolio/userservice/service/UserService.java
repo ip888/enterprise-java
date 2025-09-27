@@ -29,13 +29,22 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EventPublisher eventPublisher;
+    private final CacheService cacheService;
+    private final KafkaEventService kafkaEventService;
+    private final RealTimeMetricsService metricsService;
     
     public UserService(UserRepository userRepository, 
                       PasswordEncoder passwordEncoder,
-                      EventPublisher eventPublisher) {
+                      EventPublisher eventPublisher,
+                      CacheService cacheService,
+                      KafkaEventService kafkaEventService,
+                      RealTimeMetricsService metricsService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.eventPublisher = eventPublisher;
+        this.cacheService = cacheService;
+        this.kafkaEventService = kafkaEventService;
+        this.metricsService = metricsService;
     }
     
     /**
@@ -46,7 +55,10 @@ public class UserService {
         
         return validateUserDoesNotExist(request.username(), request.email())
             .then(createAndSaveUser(request))
-            .doOnNext(user -> publishUserRegisteredEvent(user, generateCorrelationId()))
+            .doOnNext(user -> {
+                publishUserRegisteredEvent(user, generateCorrelationId());
+                metricsService.recordUserRegistration(user.username());
+            })
             .map(UserResponse::fromUser)
             .doOnSuccess(user -> logger.info("User registered successfully: {}", user.username()))
             .doOnError(error -> logger.error("Failed to register user: {}", request.username(), error));
@@ -62,23 +74,44 @@ public class UserService {
             .filter(user -> user.isActive())
             .filter(user -> passwordEncoder.matches(request.password(), user.passwordHash()))
             .map(UserResponse::fromUser)
-            .doOnNext(user -> updateLastLogin(user.id()))
+            .doOnNext(user -> {
+                updateLastLogin(user.id());
+                metricsService.recordUserLogin(user.username());
+            })
             .doOnSuccess(user -> logger.info("User authenticated successfully: {}", 
                 user != null ? user.username() : "null"))
             .doOnError(error -> logger.warn("Authentication failed for user: {}", request.email()));
     }
     
     /**
-     * Get user by ID
+     * Get user by ID with Redis caching
      */
     public Mono<UserResponse> getUserById(Long userId) {
         logger.debug("Fetching user by ID: {}", userId);
         
-        return userRepository.findById(userId)
-            .filter(user -> user.isActive())
-            .map(UserResponse::fromUser)
-            .doOnSuccess(user -> logger.debug("User found: {}", 
-                user != null ? user.username() : "null"));
+        // Try to get from cache first
+        return cacheService.getCachedUserProfile(userId.toString())
+            .cast(UserResponse.class)
+            .doOnNext(cachedUser -> {
+                logger.debug("User found in cache: {}", cachedUser.username());
+                metricsService.recordCacheHit("user:" + userId);
+            })
+            .switchIfEmpty(
+                // If not in cache, fetch from database
+                userRepository.findById(userId)
+                    .filter(user -> user.isActive())
+                    .map(UserResponse::fromUser)
+                    .flatMap(userResponse -> 
+                        // Cache the result
+                        cacheService.cacheUserProfile(userId.toString(), userResponse)
+                            .thenReturn(userResponse)
+                    )
+                    .doOnNext(user -> {
+                        logger.debug("User loaded from database and cached: {}", user.username());
+                        metricsService.recordCacheMiss("user:" + userId);
+                        metricsService.recordRedisOperation("SET", "user:" + userId);
+                    })
+            );
     }
     
     /**
@@ -93,7 +126,7 @@ public class UserService {
     }
     
     /**
-     * Update user information
+     * Update user information with caching and events
      */
     public Mono<UserResponse> updateUser(Long userId, UserUpdateRequest request) {
         logger.info("Updating user: {}", userId);
@@ -106,8 +139,29 @@ public class UserService {
                 request.email() != null ? request.email() : user.email()
             ))
             .flatMap(userRepository::save)
-            .doOnNext(user -> publishUserUpdatedEvent(user, request, generateCorrelationId()))
-            .map(UserResponse::fromUser)
+            .flatMap(updatedUser -> {
+                UserResponse userResponse = UserResponse.fromUser(updatedUser);
+                
+                // Record metrics
+                metricsService.recordUserUpdate(updatedUser.username());
+                metricsService.recordRedisOperation("DEL", "user:" + userId);
+                
+                // Invalidate cache
+                Mono<Boolean> cacheInvalidation = cacheService.invalidateUserCache(userId.toString());
+                
+                // Publish events
+                Mono<Void> eventPublishing = Mono.fromRunnable(() -> 
+                    publishUserUpdatedEvent(updatedUser, request, generateCorrelationId()));
+                Mono<Void> kafkaEvent = kafkaEventService.publishNotificationEvent(
+                    userId.toString(), 
+                    "User profile updated", 
+                    "profile_update"
+                ).doOnSuccess(result -> metricsService.recordKafkaEvent("notifications", "profile_update"))
+                .then();
+                
+                return Mono.when(cacheInvalidation, eventPublishing, kafkaEvent)
+                    .thenReturn(userResponse);
+            })
             .doOnSuccess(user -> logger.info("User updated successfully: {}", user.username()))
             .doOnError(error -> logger.error("Failed to update user: {}", userId, error));
     }
@@ -148,13 +202,37 @@ public class UserService {
     }
     
     /**
-     * Search users by name or username
+     * Search users by name or username with Redis caching
      */
     public Flux<UserResponse> searchUsers(String searchTerm, int limit, int offset) {
         logger.debug("Searching users with term: {}", searchTerm);
         
-        return userRepository.searchUsers(searchTerm, limit, offset)
-            .map(UserResponse::fromUser)
+        // Try to get cached search results first
+        return cacheService.getCachedSearchResults(searchTerm)
+            .cast(java.util.List.class)
+            .flatMapMany(cachedResults -> {
+                logger.debug("Search results found in cache for term: {}", searchTerm);
+                metricsService.recordCacheHit("search:" + searchTerm);
+                metricsService.recordUserSearch(searchTerm, cachedResults.size());
+                return Flux.fromIterable(cachedResults);
+            })
+            .cast(UserResponse.class)
+            .switchIfEmpty(
+                // If not cached, search in database
+                userRepository.searchUsers(searchTerm, limit, offset)
+                    .map(UserResponse::fromUser)
+                    .collectList()
+                    .flatMap(results -> {
+                        metricsService.recordCacheMiss("search:" + searchTerm);
+                        metricsService.recordUserSearch(searchTerm, results.size());
+                        metricsService.recordRedisOperation("SET", "search:" + searchTerm);
+                        // Cache the search results
+                        return cacheService.cacheSearchResults(searchTerm, results)
+                            .thenReturn(results);
+                    })
+                    .flatMapMany(Flux::fromIterable)
+                    .doOnComplete(() -> logger.debug("Search results cached for term: {}", searchTerm))
+            )
             .doOnComplete(() -> logger.debug("User search completed for term: {}", searchTerm));
     }
     
@@ -228,7 +306,9 @@ public class UserService {
             user.id(), user.username(), user.email(), 
             user.firstName(), user.lastName(), correlationId
         );
-        eventPublisher.publishUserEvent(event).subscribe();
+        eventPublisher.publishUserEvent(event)
+            .doOnSuccess(result -> metricsService.recordKafkaEvent("user-events", "user_registered"))
+            .subscribe();
     }
     
     private void publishUserUpdatedEvent(User user, UserUpdateRequest request, String correlationId) {
@@ -238,7 +318,9 @@ public class UserService {
         if (request.email() != null) updatedFields.add("email");
         
         UserUpdatedEvent event = UserUpdatedEvent.create(user.id(), updatedFields.toArray(new String[0]), correlationId);
-        eventPublisher.publishUserEvent(event).subscribe();
+        eventPublisher.publishUserEvent(event)
+            .doOnSuccess(result -> metricsService.recordKafkaEvent("user-events", "user_updated"))
+            .subscribe();
     }
     
     private void publishUserDeactivatedEvent(User user, String reason, String correlationId) {

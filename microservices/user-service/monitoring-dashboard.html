@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Java - Kafka & Redis Monitoring Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            padding: 20px;
+        }
+
+        .dashboard {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .btn.redis { background: #dc3545; }
+        .btn.kafka { background: #ff6b35; }
+        .btn.full { background: #6f42c1; }
+        .btn.reset { background: #6c757d; }
+
+        .status-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .status-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+
+        .status-card:hover {
+            transform: translateY(-3px);
+        }
+
+        .status-card.up {
+            border-left: 5px solid #28a745;
+        }
+
+        .status-card.down {
+            border-left: 5px solid #dc3545;
+        }
+
+        .status-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .status-up { color: #28a745; }
+        .status-down { color: #dc3545; }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .metric-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+
+        .metric-description {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .activity-log {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            height: 300px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .log-info { background: #e3f2fd; color: #1976d2; }
+        .log-success { background: #e8f5e8; color: #2e7d32; }
+        .log-error { background: #ffebee; color: #c62828; }
+
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 20px;
+        }
+
+        .timestamp {
+            font-size: 0.8rem;
+            color: #999;
+            float: right;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .live-indicator {
+            animation: pulse 2s infinite;
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .connection-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .detail-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .detail-title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .detail-title.redis { color: #dc3545; }
+        .detail-title.kafka { color: #ff6b35; }
+
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .detail-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1>🚀 Enterprise Java Portfolio</h1>
+            <p>Real-time Kafka & Redis Monitoring Dashboard</p>
+            <p class="live-indicator">● LIVE MONITORING ACTIVE</p>
+        </div>
+
+        <div class="controls">
+            <button class="btn redis" onclick="simulateRedisActivity()">🔴 Simulate Redis Activity</button>
+            <button class="btn kafka" onclick="simulateKafkaActivity()">🟠 Simulate Kafka Events</button>
+            <button class="btn full" onclick="simulateFullActivity()">🟣 Full System Test</button>
+            <button class="btn reset" onclick="resetMetrics()">🔄 Reset Metrics</button>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-card" id="redis-status">
+                <h3>Redis Cache</h3>
+                <div class="status-value" id="redis-value">...</div>
+                <div>Connection Status</div>
+            </div>
+            <div class="status-card" id="kafka-status">
+                <h3>Kafka Messaging</h3>
+                <div class="status-value" id="kafka-value">...</div>
+                <div>Connection Status</div>
+            </div>
+            <div class="status-card">
+                <h3>Overall Health</h3>
+                <div class="status-value" id="health-value">...</div>
+                <div>System Status</div>
+            </div>
+            <div class="status-card">
+                <h3>Last Updated</h3>
+                <div class="status-value" id="last-update">...</div>
+                <div>Timestamp</div>
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-title">Redis Operations</div>
+                <div class="metric-value" id="redis-ops">0</div>
+                <div class="metric-description">Total cache operations performed</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Kafka Events</div>
+                <div class="metric-value" id="kafka-events">0</div>
+                <div class="metric-description">Total events published to Kafka</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Cache Hit Ratio</div>
+                <div class="metric-value" id="cache-ratio">0%</div>
+                <div class="metric-description">Percentage of successful cache hits</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Active Keys</div>
+                <div class="metric-value" id="active-keys">0</div>
+                <div class="metric-description">Current keys stored in Redis</div>
+            </div>
+        </div>
+
+        <div class="connection-details">
+            <div class="detail-card">
+                <div class="detail-title redis">🔴 Redis Connection Details</div>
+                <div id="redis-details">
+                    <div class="loading">Loading Redis details...</div>
+                </div>
+            </div>
+            <div class="detail-card">
+                <div class="detail-title kafka">🟠 Kafka Connection Details</div>
+                <div id="kafka-details">
+                    <div class="loading">Loading Kafka details...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-title">📊 Activity Log</div>
+            <div class="activity-log" id="activity-log">
+                <div class="log-entry log-info">Monitoring dashboard initialized...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8081/api/v1';
+        let logCounter = 1;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDashboardData();
+            startLiveUpdates();
+            addLogEntry('Dashboard started - connecting to enterprise services...', 'info');
+        });
+
+        // Load dashboard data
+        async function loadDashboardData() {
+            try {
+                const response = await fetch(`${API_BASE}/monitoring/dashboard`);
+                const data = await response.json();
+                updateDashboard(data);
+                addLogEntry('Dashboard data updated successfully', 'success');
+            } catch (error) {
+                addLogEntry(`Failed to load dashboard data: ${error.message}`, 'error');
+                console.error('Error loading dashboard:', error);
+            }
+        }
+
+        // Update dashboard with new data
+        function updateDashboard(data) {
+            // Update status indicators
+            updateStatus('redis-status', 'redis-value', data.redis_status);
+            updateStatus('kafka-status', 'kafka-value', data.kafka_status);
+            
+            // Update health
+            const healthStatus = (data.redis_status === 'UP' && data.kafka_status === 'UP') ? 'HEALTHY' : 'DEGRADED';
+            document.getElementById('health-value').textContent = healthStatus;
+            document.getElementById('health-value').className = 'status-value ' + (healthStatus === 'HEALTHY' ? 'status-up' : 'status-down');
+            
+            // Update timestamp
+            const timestamp = new Date(data.timestamp).toLocaleTimeString();
+            document.getElementById('last-update').textContent = timestamp;
+            
+            // Update metrics
+            if (data.metrics) {
+                document.getElementById('redis-ops').textContent = data.metrics.redis_operations || 0;
+                document.getElementById('kafka-events').textContent = data.metrics.kafka_events || 0;
+                document.getElementById('cache-ratio').textContent = (data.metrics.cache_hit_ratio || 0).toFixed(1) + '%';
+            }
+            
+            // Update Redis details
+            if (data.redis_stats) {
+                updateRedisDetails(data.redis_stats);
+                document.getElementById('active-keys').textContent = data.redis_stats.total_keys || 0;
+            }
+            
+            // Update Kafka details
+            if (data.kafka_stats) {
+                updateKafkaDetails(data.kafka_stats);
+            }
+        }
+
+        // Update status card
+        function updateStatus(cardId, valueId, status) {
+            const card = document.getElementById(cardId);
+            const value = document.getElementById(valueId);
+            
+            value.textContent = status;
+            card.className = 'status-card ' + (status === 'UP' ? 'up' : 'down');
+            value.className = 'status-value ' + (status === 'UP' ? 'status-up' : 'status-down');
+        }
+
+        // Update Redis details
+        function updateRedisDetails(stats) {
+            const container = document.getElementById('redis-details');
+            container.innerHTML = '';
+            
+            const details = [
+                ['Status', stats.connection_status || 'Unknown'],
+                ['Total Keys', stats.total_keys || 0],
+                ['Last Check', new Date(stats.last_check).toLocaleString()]
+            ];
+            
+            details.forEach(([key, value]) => {
+                const item = document.createElement('div');
+                item.className = 'detail-item';
+                item.innerHTML = `<span><strong>${key}:</strong></span><span>${value}</span>`;
+                container.appendChild(item);
+            });
+        }
+
+        // Update Kafka details
+        function updateKafkaDetails(stats) {
+            const container = document.getElementById('kafka-details');
+            container.innerHTML = '';
+            
+            const details = [
+                ['Status', stats.connection_status || 'Unknown'],
+                ['Bootstrap Servers', stats.bootstrap_servers || 'localhost:9092'],
+                ['Last Check', new Date(stats.last_check).toLocaleString()]
+            ];
+            
+            details.forEach(([key, value]) => {
+                const item = document.createElement('div');
+                item.className = 'detail-item';
+                item.innerHTML = `<span><strong>${key}:</strong></span><span>${value}</span>`;
+                container.appendChild(item);
+            });
+        }
+
+        // Start live updates
+        function startLiveUpdates() {
+            setInterval(loadDashboardData, 5000); // Update every 5 seconds
+        }
+
+        // Simulate Redis activity
+        async function simulateRedisActivity() {
+            addLogEntry('Starting Redis activity simulation...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/monitoring/simulate/redis-activity`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                addLogEntry(`Redis simulation completed: ${result.operations_executed} operations`, 'success');
+                loadDashboardData(); // Refresh dashboard
+            } catch (error) {
+                addLogEntry(`Redis simulation failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Simulate Kafka activity
+        async function simulateKafkaActivity() {
+            addLogEntry('Starting Kafka activity simulation...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/monitoring/simulate/kafka-activity`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                addLogEntry(`Kafka simulation completed: ${result.events_published} events published`, 'success');
+                loadDashboardData(); // Refresh dashboard
+            } catch (error) {
+                addLogEntry(`Kafka simulation failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Simulate full activity
+        async function simulateFullActivity() {
+            addLogEntry('Starting full system activity simulation...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/monitoring/simulate/full-activity`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                addLogEntry('Full system simulation completed successfully', 'success');
+                loadDashboardData(); // Refresh dashboard
+            } catch (error) {
+                addLogEntry(`Full simulation failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Reset metrics
+        async function resetMetrics() {
+            addLogEntry('Resetting all metrics...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/monitoring/reset-metrics`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                addLogEntry('All metrics reset successfully', 'success');
+                loadDashboardData(); // Refresh dashboard
+            } catch (error) {
+                addLogEntry(`Metric reset failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Add log entry
+        function addLogEntry(message, type) {
+            const log = document.getElementById('activity-log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            entry.innerHTML = `
+                <span>${String(logCounter++).padStart(3, '0')}. ${message}</span>
+                <span class="timestamp">${timestamp}</span>
+            `;
+            
+            log.insertBefore(entry, log.firstChild);
+            
+            // Keep only last 50 log entries
+            while (log.children.length > 50) {
+                log.removeChild(log.lastChild);
+            }
+        }
+    </script>
+</body>
+</html>

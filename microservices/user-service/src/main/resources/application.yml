@@ -2,7 +2,7 @@
 spring:
   application:
     name: user-service
-  
+
   # R2DBC Database Configuration
   r2dbc:
     url: ${DB_URL:r2dbc:postgresql://localhost:5432/portfolio_db}
@@ -13,17 +13,17 @@ spring:
       max-size: 20
       max-idle-time: 30m
       validation-query: SELECT 1
-  
+
   # Liquibase Configuration (for database migrations)
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.xml
     url: ${LIQUIBASE_URL:jdbc:postgresql://localhost:5432/portfolio_db}
     user: ${DB_USERNAME:portfolio_user}
     password: ${DB_PASSWORD:portfolio_pass}
-  
+
   # Kafka Configuration
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -36,7 +36,20 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       auto-offset-reset: earliest
-  
+
+  # Redis Configuration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
   # Jackson Configuration
   jackson:
     default-property-inclusion: non_null
@@ -44,7 +57,7 @@ spring:
       write-dates-as-timestamps: false
     deserialization:
       fail-on-unknown-properties: false
-  
+
   # Security Configuration
   security:
     user:
@@ -79,13 +92,13 @@ app:
     secret: ${JWT_SECRET:change-this-secret-in-production-minimum-32-characters-required}
     expiration: ${JWT_EXPIRATION:86400000} # 24 hours in milliseconds
     issuer: user-service
-  
+
   cors:
     allowed-origins: "*"
     allowed-methods: GET,POST,PUT,DELETE,OPTIONS
     allowed-headers: "*"
     allow-credentials: true
-  
+
   pagination:
     default-size: 20
     max-size: 100
