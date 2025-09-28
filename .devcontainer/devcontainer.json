@@ -1,5 +1,5 @@
 {
-  "name": "Enterprise Java Portfolio",
+  "name": "Enterprise Java Project",
   "image": "mcr.microsoft.com/devcontainers/java:21-jdk-bookworm",
   
   "features": {

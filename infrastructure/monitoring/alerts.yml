@@ -1,0 +1,71 @@
+groups:
+  - name: enterprise-java-alerts
+    rules:
+      # Application Health Alerts
+      - alert: ServiceDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.instance }} is down"
+          description: "Service {{ $labels.instance }} has been down for more than 30 seconds."
+
+      # JVM Memory Alerts
+      - alert: HighJVMMemoryUsage
+        expr: (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) > 0.8
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High JVM heap memory usage on {{ $labels.instance }}"
+          description: "JVM heap memory usage is above 80% for more than 2 minutes."
+
+      # Response Time Alerts
+      - alert: HighResponseTime
+        expr: http_server_requests_seconds{quantile="0.95"} > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High response time on {{ $labels.instance }}"
+          description: "95th percentile response time is above 1 second."
+
+      # Error Rate Alerts
+      - alert: HighErrorRate
+        expr: rate(http_server_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate on {{ $labels.instance }}"
+          description: "Error rate is above 10% for the last 5 minutes."
+
+      # Database Connection Alerts
+      - alert: DatabaseConnectionFailures
+        expr: hikaricp_connections_active > hikaricp_connections_max * 0.9
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool near capacity"
+          description: "HikariCP connection pool is using more than 90% of available connections."
+
+      # Custom Business Logic Alerts
+      - alert: SuspiciousLoginActivity
+        expr: increase(suspicious_login_attempts_total[5m]) > 10
+        for: 0m
+        labels:
+          severity: high
+        annotations:
+          summary: "Suspicious login activity detected"
+          description: "More than 10 suspicious login attempts in the last 5 minutes."
+
+      - alert: StreamingProcessingLag
+        expr: kafka_consumer_lag_max > 1000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High streaming processing lag"
+          description: "Kafka consumer lag is above 1000 messages."
