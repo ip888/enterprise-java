@@ -147,7 +147,6 @@ cd microservices/user-service
 # 4. Test changes
 ./mvnw test                    # Unit tests
 ./mvnw verify                  # Integration tests
-./scripts/contract-tests.sh    # Contract tests
 
 # 5. Commit and deploy
 git add . && git commit -m "feat: implement event sourcing"
@@ -166,7 +165,7 @@ git push  # Triggers CI/CD pipeline
 ### **Scenario 1: Event-Driven Architecture**
 ```bash
 # Start all services
-./scripts/start-microservices.sh
+./run.sh start
 
 # Create user (triggers events)
 curl -X POST http://localhost:8080/api/users \
@@ -185,15 +184,15 @@ kafka-console-consumer --bootstrap-server localhost:9092 --topic user-events
 ### **Scenario 2: Real-Time Streaming**
 ```bash
 # Start streaming pipeline
-./scripts/start-streaming.sh
+./run.sh start
 
-# Generate test data
-./scripts/generate-test-data.sh --rate 1000 --duration 300
+# View streaming service
+curl http://localhost:8081/actuator/health
 
 # Monitor dashboards:
-# - Flink UI: http://localhost:8088 (Complex event processing)
-# - Spark UI: http://localhost:4040 (ML model training)
-# - Grafana: http://localhost:3001 (Real-time metrics)
+# - Streaming UI: http://localhost:8081 (Analytics dashboard)
+# - Kafka UI: http://localhost:8083 (Stream monitoring)
+# - Grafana: http://localhost:3000 (Real-time metrics)
 ```
 
 ## 🚀 Deployment

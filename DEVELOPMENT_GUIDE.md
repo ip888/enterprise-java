@@ -86,15 +86,18 @@ enterprise-java-portfolio/
 ├── infrastructure/             # Deployment & IaC
 │   ├── terraform/
 │   ├── kubernetes/
-│   └── docker/
+│   └── monitoring/             # Monitoring stack
 ├── docs/                       # Documentation
 │   ├── api/
 │   ├── architecture/
 │   └── deployment/
-└── scripts/                    # Utility scripts
-    ├── build.sh
-    ├── deploy.sh
-    └── test.sh
+└── streaming-analytics/        # Contains scripts in scripts/ folder
+    ├── scripts/
+    │   ├── init-db.sql
+    │   └── start-pipeline.sh
+    └── ...
+
+---
 ```
 
 ---
@@ -113,7 +116,7 @@ cd microservices/user-service
 
 # 4. Test changes
 ./mvnw test
-./scripts/integration-test.sh
+./mvnw verify  # Integration tests
 
 # 5. Commit and push
 git add .
@@ -129,14 +132,16 @@ git push
 # Integration Tests (with Testcontainers)  
 ./mvnw verify
 
-# Contract Tests (API compatibility)
-./scripts/contract-tests.sh
+# Integration Tests with Maven
+./mvnw verify
 
-# Performance Tests (JMeter)
-./scripts/performance-tests.sh
+# Health Check Tests
+./health-check.sh
 
-# End-to-End Tests
-./scripts/e2e-tests.sh
+# End-to-End Tests via CI/CD pipeline
+# (See .github/workflows/ci-cd.yml for automated testing)
+
+---
 ```
 
 ---
@@ -202,7 +207,7 @@ spark-submit --class com.example.SparkMLPipeline target/spark-ml-pipeline-1.0.ja
 ### Scenario 1: Event-Driven Architecture Demo
 ```bash
 # 1. Start all microservices
-./scripts/start-microservices.sh
+./run.sh start
 
 # 2. Create user and trigger events
 curl -X POST http://localhost:8080/api/users \
@@ -221,13 +226,13 @@ kafka-console-consumer --bootstrap-server localhost:9092 --topic user-events --f
 ### Scenario 2: Real-time Streaming Demo
 ```bash
 # 1. Start streaming pipeline
-./scripts/start-streaming.sh
+./run.sh start
 
-# 2. Generate test data
-./scripts/generate-test-data.sh --rate 1000 --duration 300
+# 2. Check streaming analytics health
+curl http://localhost:8081/actuator/health
 
-# 3. Show real-time processing
-# - Flink dashboard: Complex event processing
+# 3. View real-time processing
+# - Streaming dashboard: http://localhost:8081
 # - Spark UI: ML model training progress
 # - Grafana: Real-time metrics
 ```

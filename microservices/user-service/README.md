@@ -250,7 +250,7 @@ docker build -t user-service:latest .
 # Run container
 docker run -p 8081:8081 \
   -e SPRING_PROFILES_ACTIVE=prod \
-  -e SPRING_R2DBC_URL=r2dbc:postgresql://host.docker.internal:5432/portfolio_db \
+  -e SPRING_R2DBC_URL=r2dbc:postgresql://172.19.0.1:5432/portfolio_db \
   user-service:latest
 ```
 
