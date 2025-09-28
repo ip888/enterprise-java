@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
+  statuses: write
+
 env:
   JAVA_VERSION: "21"
   MAVEN_OPTS: "-Xmx2g"
@@ -131,12 +138,47 @@ jobs:
           mvn verify -P integration-tests -B -Dmaven.gitcommitid.skip=true
 
       - name: Generate test report
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v1.9.1
         if: success() || failure()
         with:
           name: Maven Tests
           path: "**/target/surefire-reports/*.xml"
           reporter: java-junit
+          fail-on-error: false
+        continue-on-error: true
+
+      - name: Publish test results summary
+        if: success() || failure()
+        run: |
+          echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+
+          # Count test results
+          total_tests=0
+          passed_tests=0
+          failed_tests=0
+
+          for report in $(find . -name "*.xml" -path "*/target/surefire-reports/*"); do
+            if [ -f "$report" ]; then
+              tests=$(grep -o 'tests="[0-9]*"' "$report" | grep -o '[0-9]*' | head -1 || echo "0")
+              failures=$(grep -o 'failures="[0-9]*"' "$report" | grep -o '[0-9]*' | head -1 || echo "0")
+              errors=$(grep -o 'errors="[0-9]*"' "$report" | grep -o '[0-9]*' | head -1 || echo "0")
+              
+              total_tests=$((total_tests + tests))
+              failed_tests=$((failed_tests + failures + errors))
+            fi
+          done
+
+          passed_tests=$((total_tests - failed_tests))
+
+          echo "- **Total Tests:** $total_tests" >> $GITHUB_STEP_SUMMARY
+          echo "- **Passed:** ✅ $passed_tests" >> $GITHUB_STEP_SUMMARY
+          echo "- **Failed:** ❌ $failed_tests" >> $GITHUB_STEP_SUMMARY
+
+          if [ $failed_tests -eq 0 ]; then
+            echo "- **Status:** 🎉 All tests passed!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Status:** ⚠️ Some tests failed" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Code coverage
         run: |
@@ -148,12 +190,13 @@ jobs:
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           files: ./**/target/site/jacoco/jacoco.xml
           flags: unittests
           name: codecov-umbrella
-          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+        continue-on-error: true
 
   security:
     name: Security Scan

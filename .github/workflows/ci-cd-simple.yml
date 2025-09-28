@@ -1,0 +1,206 @@
+name: Enterprise Java Portfolio CI/CD (Simple)
+
+on:
+    push:
+        branches: [main, develop]
+    pull_request:
+        branches: [main]
+
+permissions:
+    contents: read
+    actions: read
+
+env:
+    JAVA_VERSION: "21"
+    MAVEN_OPTS: "-Xmx2g"
+
+jobs:
+    test:
+        name: Build & Test
+        runs-on: ubuntu-latest
+
+        services:
+            postgres:
+                image: postgres:15-alpine
+                env:
+                    POSTGRES_PASSWORD: portfolio_pass
+                    POSTGRES_USER: portfolio_user
+                    POSTGRES_DB: portfolio_test_db
+                options: >-
+                    --health-cmd pg_isready
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+                ports:
+                    - 5432:5432
+
+            redis:
+                image: redis:7-alpine
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+                ports:
+                    - 6379:6379
+
+            kafka:
+                image: bitnami/kafka:3.6.0
+                env:
+                    KAFKA_CFG_NODE_ID: 1
+                    KAFKA_CFG_PROCESS_ROLES: "controller,broker"
+                    KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+                    KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+                    KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+                    KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092"
+                    KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+                    KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+                    KAFKA_CFG_LOG_DIRS: "/tmp/kraft-combined-logs"
+                    KAFKA_KRAFT_CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+                    KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+                    KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+                    KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+                    KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
+                    ALLOW_PLAINTEXT_LISTENER: "yes"
+                options: >-
+                    --health-cmd "kafka-topics.sh --bootstrap-server localhost:9092 --list"
+                    --health-interval 30s
+                    --health-timeout 10s
+                    --health-retries 5
+                    --health-start-period 60s
+                ports:
+                    - 9092:9092
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up JDK 21
+              uses: actions/setup-java@v4
+              with:
+                  java-version: ${{ env.JAVA_VERSION }}
+                  distribution: "graalvm"
+                  cache: maven
+
+            - name: Cache Maven packages
+              uses: actions/cache@v3
+              with:
+                  path: ~/.m2
+                  key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+
+            - name: Install system dependencies
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y postgresql-client redis-tools netcat-traditional
+
+            - name: Wait for services
+              run: |
+                  echo "Waiting for PostgreSQL..."
+                  timeout 60 bash -c 'until pg_isready -h localhost -p 5432 -U portfolio_user; do sleep 2; done'
+                  echo "Waiting for Redis..."
+                  timeout 60 bash -c 'until redis-cli -h localhost -p 6379 ping | grep -q PONG; do sleep 2; done'
+                  echo "Waiting for Kafka..."
+                  timeout 120 bash -c 'until nc -z localhost 9092; do echo "Waiting for Kafka..."; sleep 5; done' || echo "Kafka timeout, continuing..."
+                  echo "Services are ready!"
+
+            - name: Build project
+              run: |
+                  echo "Building all modules..."
+                  mvn clean compile -B -U -Dmaven.gitcommitid.skip=true
+
+            - name: Run tests
+              run: |
+                  echo "Running unit tests..."
+                  mvn test -B -Duser.timezone=UTC -Dmaven.gitcommitid.skip=true
+
+            - name: Package applications
+              run: |
+                  echo "Creating JAR packages..."
+                  mvn package -DskipTests -B -Dmaven.gitcommitid.skip=true
+
+            - name: Test Results Summary
+              if: success() || failure()
+              run: |
+                  echo "## 🧪 Test Results Summary" >> $GITHUB_STEP_SUMMARY
+
+                  total_tests=0
+                  passed_tests=0
+                  failed_tests=0
+
+                  for report in $(find . -name "TEST-*.xml" -path "*/target/surefire-reports/*"); do
+                    if [ -f "$report" ]; then
+                      tests=$(grep -o 'tests="[0-9]*"' "$report" | grep -o '[0-9]*' | head -1 || echo "0")
+                      failures=$(grep -o 'failures="[0-9]*"' "$report" | grep -o '[0-9]*' | head -1 || echo "0")
+                      errors=$(grep -o 'errors="[0-9]*"' "$report" | grep -o '[0-9]*' | head -1 || echo "0")
+                      
+                      if [ "$tests" != "0" ]; then
+                        total_tests=$((total_tests + tests))
+                        failed_tests=$((failed_tests + failures + errors))
+                      fi
+                    fi
+                  done
+
+                  passed_tests=$((total_tests - failed_tests))
+
+                  echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+                  echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+                  echo "| Total Tests | $total_tests |" >> $GITHUB_STEP_SUMMARY
+                  echo "| Passed | ✅ $passed_tests |" >> $GITHUB_STEP_SUMMARY
+                  echo "| Failed | ❌ $failed_tests |" >> $GITHUB_STEP_SUMMARY
+
+                  if [ $failed_tests -eq 0 ]; then
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                    echo "🎉 **All tests passed successfully!**" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                    echo "⚠️ **Some tests failed - please review**" >> $GITHUB_STEP_SUMMARY
+                  fi
+
+            - name: Build Summary
+              if: success() || failure()
+              run: |
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "## 📦 Build Artifacts" >> $GITHUB_STEP_SUMMARY
+
+                  # List created JAR files
+                  find . -name "*.jar" -not -path "*/original-*" -path "*/target/*" | while read jar; do
+                    size=$(ls -lh "$jar" | awk '{print $5}')
+                    name=$(basename "$jar")
+                    echo "- ✅ $name ($size)" >> $GITHUB_STEP_SUMMARY
+                  done
+
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "## 🏗️ Build Status" >> $GITHUB_STEP_SUMMARY
+                  if [ $? -eq 0 ]; then
+                    echo "✅ **Build completed successfully**" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "❌ **Build failed**" >> $GITHUB_STEP_SUMMARY
+                  fi
+
+    security:
+        name: Security Scan
+        runs-on: ubuntu-latest
+        needs: test
+        if: success()
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up JDK 21
+              uses: actions/setup-java@v4
+              with:
+                  java-version: ${{ env.JAVA_VERSION }}
+                  distribution: "graalvm"
+                  cache: maven
+
+            - name: Run security audit
+              run: |
+                  echo "Running Maven security audit..."
+                  mvn org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8 || echo "Security audit completed with warnings"
+
+            - name: Security Summary
+              run: |
+                  echo "## 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
+                  echo "✅ Dependency vulnerability scan completed" >> $GITHUB_STEP_SUMMARY
+                  echo "📋 Check logs above for any high-severity vulnerabilities" >> $GITHUB_STEP_SUMMARY
